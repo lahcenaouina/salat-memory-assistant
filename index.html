@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Salat posture detector</title>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
+<style>
+  :root { --bg:#f3f5f2; --ink:#18231f; --muted:#5d6b64; --accent:#1f6f5b; --card:#ffffff; --line:#d5dcd7; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141a17; --ink:#e8efeb; --muted:#9baba3; --accent:#5cc2a4; --card:#1d2622; --line:#2f3b36; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family: Georgia, "Times New Roman", serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: var(--muted); font-family: system-ui, sans-serif; font-size: .95rem; }
+  .stage { position: relative; background: #000; border-radius: 6px; overflow: hidden; }
+  .stage video, .stage img, .stage canvas { display:block; width:100%; height:auto; }
+  .stage canvas { position:absolute; inset:0; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; font-family: system-ui, sans-serif; }
+  button, label.btn { background: var(--accent); color:#fff; border:0; padding:10px 16px; border-radius:6px; font-size:.95rem; cursor:pointer; }
+  button:focus-visible, label.btn:focus-within { outline: 3px solid var(--ink); outline-offset: 2px; }
+  button.alt { background: transparent; color: var(--ink); border:1px solid var(--line); }
+  input[type=file] { display:none; }
+  #readout { background: var(--card); border:1px solid var(--line); border-radius:6px; padding:14px 16px; min-height:64px; font-size:1.5rem; }
+  #status { font-family: system-ui, sans-serif; color: var(--muted); font-size:.9rem; margin-top:8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Salat posture detector</h1>
+  <p class="sub">Runs entirely in your browser. No image is uploaded anywhere.</p>
+
+  <div class="stage">
+    <video id="video" playsinline muted></video>
+    <img id="photo" alt="" hidden>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="bar">
+    <button id="camBtn">Start camera</button>
+    <button id="stopBtn" class="alt" hidden>Stop camera</button>
+    <label class="btn">Choose a photo<input type="file" id="file" accept="image/*"></label>
+  </div>
+
+  <div id="readout">No posture detected yet</div>
+  <div id="status">Loading model…</div>
+</main>
+
+<script>
+// Defaults. config.json (written by launch.py) overrides these.
+let CLASSES = ["qiyam", "ruku", "sitting", "sujud"];
+let MODEL_URL = "salat_best.onnx";
+const SIZE = 640;
+const CONF = 0.4;
+const IOU = 0.5;
+const COLORS = ["#2ecc71", "#f1c40f", "#3498db", "#e74c3c", "#9b59b6"];
+
+const video = document.getElementById("video");
+const photo = document.getElementById("photo");
+const overlay = document.getElementById("overlay");
+const ctx = overlay.getContext("2d");
+const readout = document.getElementById("readout");
+const statusEl = document.getElementById("status");
+const camBtn = document.getElementById("camBtn");
+const stopBtn = document.getElementById("stopBtn");
+
+const work = document.createElement("canvas");
+work.width = work.height = SIZE;
+const wctx = work.getContext("2d", { willReadFrequently: true });
+
+let session = null, running = false, stream = null;
+
+async function loadModel() {
+  try {
+    const r = await fetch("config.json", { cache: "no-store" });
+    if (r.ok) {
+      const cfg = await r.json();
+      if (cfg.classes) CLASSES = cfg.classes;
+      if (cfg.model) MODEL_URL = cfg.model;
+    }
+  } catch (e) { /* no config.json, use defaults */ }
+  try {
+    ort.env.wasm.numThreads = 1;
+    session = await ort.InferenceSession.create(MODEL_URL, { executionProviders: ["wasm"] });
+    statusEl.textContent = "Model ready (" + CLASSES.join(", ") + ").";
+  } catch (e) {
+    statusEl.textContent = "Could not load " + MODEL_URL + ". Start the page with launch.py and keep the model file in the same folder.";
+    console.error(e);
+  }
+}
+
+function labelOf(c) { return CLASSES[c] || ("class " + c); }
+
+// Letterbox the source onto 640x640 and build the input tensor
+function preprocess(src, sw, sh) {
+  const r = Math.min(SIZE / sw, SIZE / sh);
+  const nw = Math.round(sw * r), nh = Math.round(sh * r);
+  const dx = (SIZE - nw) / 2, dy = (SIZE - nh) / 2;
+  wctx.fillStyle = "rgb(114,114,114)";
+  wctx.fillRect(0, 0, SIZE, SIZE);
+  wctx.drawImage(src, dx, dy, nw, nh);
+  const px = wctx.getImageData(0, 0, SIZE, SIZE).data;
+  const n = SIZE * SIZE;
+  const data = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) {
+    data[i] = px[i * 4] / 255;
+    data[n + i] = px[i * 4 + 1] / 255;
+    data[2 * n + i] = px[i * 4 + 2] / 255;
+  }
+  return { tensor: new ort.Tensor("float32", data, [1, 3, SIZE, SIZE]), r, dx, dy };
+}
+
+// YOLOv8 output: [1, 4 + numClasses, 8400]
+function postprocess(output, r, dx, dy, sw, sh) {
+  const d = output.data;
+  const nc = output.dims[1] - 4;
+  const na = output.dims[2];
+  const boxes = [];
+  for (let i = 0; i < na; i++) {
+    let best = 0, cls = -1;
+    for (let c = 0; c < nc; c++) {
+      const s = d[(4 + c) * na + i];
+      if (s > best) { best = s; cls = c; }
+    }
+    if (best < CONF) continue;
+    const cx = d[i], cy = d[na + i], w = d[2 * na + i], h = d[3 * na + i];
+    let x1 = (cx - w / 2 - dx) / r, y1 = (cy - h / 2 - dy) / r;
+    let x2 = (cx + w / 2 - dx) / r, y2 = (cy + h / 2 - dy) / r;
+    x1 = Math.max(0, x1); y1 = Math.max(0, y1);
+    x2 = Math.min(sw, x2); y2 = Math.min(sh, y2);
+    boxes.push({ x1, y1, x2, y2, score: best, cls });
+  }
+  return nms(boxes);
+}
+
+function iou(a, b) {
+  const ix = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1));
+  const iy = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+  const inter = ix * iy;
+  const ua = (a.x2 - a.x1) * (a.y2 - a.y1) + (b.x2 - b.x1) * (b.y2 - b.y1) - inter;
+  return ua > 0 ? inter / ua : 0;
+}
+
+function nms(boxes) {
+  boxes.sort((a, b) => b.score - a.score);
+  const keep = [];
+  for (const b of boxes) {
+    if (keep.every(k => k.cls !== b.cls || iou(k, b) < IOU)) keep.push(b);
+  }
+  return keep;
+}
+
+function draw(boxes, sw, sh) {
+  overlay.width = sw; overlay.height = sh;
+  ctx.clearRect(0, 0, sw, sh);
+  const lw = Math.max(2, sw / 200), fs = Math.max(14, sw / 28);
+  ctx.lineWidth = lw;
+  ctx.font = "bold " + fs + "px system-ui, sans-serif";
+  for (const b of boxes) {
+    const color = COLORS[b.cls % COLORS.length];
+    const text = labelOf(b.cls) + " " + Math.round(b.score * 100) + "%";
+    ctx.strokeStyle = color;
+    ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
+    const tw = ctx.measureText(text).width + 10;
+    const ty = Math.max(fs + 6, b.y1);
+    ctx.fillStyle = color;
+    ctx.fillRect(b.x1, ty - fs - 6, tw, fs + 6);
+    ctx.fillStyle = "#000";
+    ctx.fillText(text, b.x1 + 5, ty - 6);
+  }
+  readout.textContent = boxes.length
+    ? boxes.map(b => labelOf(b.cls) + " " + Math.round(b.score * 100) + "%").join("   ")
+    : "No posture detected";
+}
+
+async function detect(src, sw, sh) {
+  const { tensor, r, dx, dy } = preprocess(src, sw, sh);
+  const out = await session.run({ [session.inputNames[0]]: tensor });
+  const boxes = postprocess(out[session.outputNames[0]], r, dx, dy, sw, sh);
+  draw(boxes, sw, sh);
+}
+
+async function loop() {
+  if (!running) return;
+  const t0 = performance.now();
+  await detect(video, video.videoWidth, video.videoHeight);
+  statusEl.textContent = "Live: " + Math.round(1000 / (performance.now() - t0)) + " frames/sec";
+  requestAnimationFrame(loop);
+}
+
+camBtn.onclick = async () => {
+  if (!session) { statusEl.textContent = "Model is not loaded yet."; return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+  } catch (e) {
+    statusEl.textContent = "Camera blocked. Allow camera access and open the page at localhost or https.";
+    return;
+  }
+  photo.hidden = true; video.hidden = false;
+  video.srcObject = stream;
+  await video.play();
+  running = true;
+  camBtn.hidden = true; stopBtn.hidden = false;
+  loop();
+};
+
+stopBtn.onclick = () => {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  video.srcObject = null;
+  camBtn.hidden = false; stopBtn.hidden = true;
+  statusEl.textContent = "Camera stopped.";
+};
+
+document.getElementById("file").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f || !session) return;
+  if (running) stopBtn.onclick();
+  video.hidden = true; photo.hidden = false;
+  photo.src = URL.createObjectURL(f);
+  await photo.decode();
+  await detect(photo, photo.naturalWidth, photo.naturalHeight);
+  statusEl.textContent = "Photo analysed.";
+};
+
+loadModel();
+</script>
+</body>
+</html>
