@@ -1,60 +1,115 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Salat posture detector</title>
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
+<title>Choisir la prière</title>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
 <style>
-  :root { --bg:#f3f5f2; --ink:#18231f; --muted:#5d6b64; --accent:#1f6f5b; --card:#ffffff; --line:#d5dcd7; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#141a17; --ink:#e8efeb; --muted:#9baba3; --accent:#5cc2a4; --card:#1d2622; --line:#2f3b36; }
-  }
+  :root { --yellow:#ffd900; --ink:#1c1c1c; --muted:#6b6b66; --green:#0f6b47; --mint:#e2f2e7; --cream:#fff3c4; --card:#ffffff; --bg:#f5f5f2; --line:#e4e4df; --dark:#2b2b2b; }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font-family: Georgia, "Times New Roman", serif; }
-  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 1.6rem; margin: 0 0 4px; }
-  p.sub { margin: 0 0 20px; color: var(--muted); font-family: system-ui, sans-serif; font-size: .95rem; }
-  .stage { position: relative; background: #000; border-radius: 6px; overflow: hidden; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .top { background:var(--yellow); padding:18px 18px 22px; border-radius:0 0 22px 22px; }
+  .top > div, .top { max-width:none; }
+  .back { background:transparent; border:0; color:var(--ink); font-size:1.7rem; line-height:1; padding:0 0 8px; cursor:pointer; }
+  h1 { font-size:2rem; font-weight:800; margin:0 0 4px; letter-spacing:-.5px; }
+  #sub { margin:0; font-size:1rem; color:#333; }
+  main { max-width:560px; margin:0 auto; padding:14px 16px 40px; }
+  button:focus-visible { outline:3px solid var(--ink); outline-offset:2px; }
+  #nextBanner { display:flex; align-items:center; flex-wrap:wrap; gap:8px; background:var(--mint); border-radius:14px; padding:12px 14px; font-size:.9rem; margin-bottom:14px; }
+  #nextBanner b { color:var(--green); }
+  #nextBanner .dot { width:9px; height:9px; border-radius:50%; background:var(--green); }
+  #nextBanner .pill { margin-left:auto; background:#fff; color:var(--green); font-weight:700; border-radius:20px; padding:6px 12px; }
+  #cards { display:flex; flex-direction:column; gap:12px; }
+  .pbtn { display:flex; align-items:center; gap:14px; width:100%; text-align:left; background:var(--card); border:2px solid transparent; border-radius:16px; padding:14px; cursor:pointer; font:inherit; color:inherit; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .pbtn[aria-pressed="true"] { background:var(--cream); box-shadow:0 4px 12px rgba(0,0,0,.12); }
+  .ico { width:46px; height:46px; border-radius:50%; background:#efeeea; display:grid; place-items:center; font-size:1.4rem; flex:none; }
+  .pbtn[aria-pressed="true"] .ico { background:var(--yellow); }
+  .info { flex:1; display:flex; flex-direction:column; gap:3px; }
+  .nm { font-size:1.2rem; font-weight:800; }
+  .badge { font-size:.7rem; font-weight:800; letter-spacing:.5px; background:#cfe9d8; color:var(--green); padding:3px 9px; border-radius:20px; vertical-align:middle; margin-left:6px; }
+  .meta { font-size:.9rem; color:var(--muted); }
+  .meta i { font-style:normal; margin:0 4px; }
+  .meta .tnext { color:var(--green); font-weight:700; }
+  .meta span:not(.tnext) { color:var(--ink); font-weight:600; }
+  .radio { width:28px; height:28px; border-radius:50%; border:2px solid #d9d9d4; flex:none; display:grid; place-items:center; color:#fff; font-weight:800; }
+  .pbtn[aria-pressed="true"] .radio { background:var(--green); border-color:var(--green); }
+  .pbtn[aria-pressed="true"] .radio::after { content:"✓"; }
+  button.primary, #camBtn { background:var(--dark); color:#fff; border:0; border-radius:14px; padding:16px; font-size:1.1rem; font-weight:700; cursor:pointer; }
+  button.primary { width:100%; margin-top:18px; }
+  button.link { background:transparent; border:0; color:var(--muted); width:100%; margin-top:10px; padding:10px; font-size:.95rem; text-decoration:underline; cursor:pointer; }
+  #cartoonBox { background:var(--card); border-radius:16px; padding:14px; text-align:center; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  #cartoon { width:100%; max-width:260px; height:auto; aspect-ratio:6/5; object-fit:contain; display:block; margin:0 auto; }
+  #cartoonCap { font-size:1.35rem; font-weight:800; margin-top:6px; }
+  #title { font-size:1.3rem; font-weight:800; }
+  .progress { height:10px; background:var(--line); border-radius:6px; margin:8px 0 14px; overflow:hidden; }
+  .progress div { height:100%; width:0; background:var(--green); transition:width .3s; }
+  #doneMsg { background:var(--mint); color:var(--green); font-size:1.3rem; font-weight:800; border-radius:14px; padding:14px; margin-bottom:14px; }
+  .stage { position:relative; background:#000; border-radius:16px; overflow:hidden; margin-top:14px; max-width:340px; margin-left:auto; margin-right:auto; }
   .stage video, .stage img, .stage canvas { display:block; width:100%; height:auto; }
   .stage canvas { position:absolute; inset:0; }
-  .bar { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; font-family: system-ui, sans-serif; }
-  button, label.btn { background: var(--accent); color:#fff; border:0; padding:10px 16px; border-radius:6px; font-size:.95rem; cursor:pointer; }
-  button:focus-visible, label.btn:focus-within { outline: 3px solid var(--ink); outline-offset: 2px; }
-  button.alt { background: transparent; color: var(--ink); border:1px solid var(--line); }
+  .btns { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
+  .btns > * { flex:1 1 140px; text-align:center; }
+  #stopBtn, label.btn { background:transparent; color:var(--ink); border:2px solid var(--line); border-radius:14px; padding:14px; font-size:1rem; font-weight:700; cursor:pointer; }
   input[type=file] { display:none; }
-  #readout { background: var(--card); border:1px solid var(--line); border-radius:6px; padding:14px 16px; min-height:64px; font-size:1.5rem; }
-  #status { font-family: system-ui, sans-serif; color: var(--muted); font-size:.9rem; margin-top:8px; }
+  #readout { background:var(--card); border-radius:14px; padding:14px 16px; font-size:1.2rem; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  #readout small { display:block; font-size:.85rem; color:var(--muted); margin-top:4px; }
+  #live, #status { color:var(--muted); font-size:.9rem; margin-top:10px; text-align:center; }
+  #alertOverlay { position:fixed; inset:0; z-index:100; background:#d11a1a; color:#fff; display:none; align-items:center; justify-content:center; text-align:center; padding:24px; pointer-events:none; }
+  #alertOverlay.on { display:flex; }
+  #alertText { font-size:2.4rem; font-weight:800; line-height:1.25; white-space:pre-line; }
 </style>
 </head>
 <body>
+<header class="top">
+  <button id="backBtn" class="back" aria-label="Retour" hidden>←</button>
+  <h1 id="h1">Choisir La Prière</h1>
+  <p id="sub">Quelle prière souhaitez-vous effectuer ?</p>
+</header>
 <main>
-  <h1>Salat posture detector</h1>
-  <p class="sub">Runs entirely in your browser. No image is uploaded anywhere.</p>
+  <section id="pick">
+    <div id="nextBanner"></div>
+    <div id="cards" role="radiogroup" aria-label="Prière"></div>
+    <button id="goBtn" class="primary">Continuer →</button>
+    <button id="freeBtn" class="link">Détection libre (sans suivi)</button>
+  </section>
 
-  <div class="stage">
-    <video id="video" playsinline muted></video>
-    <img id="photo" alt="" hidden>
-    <canvas id="overlay"></canvas>
-  </div>
-
-  <div class="bar">
-    <button id="camBtn">Start camera</button>
-    <button id="stopBtn" class="alt" hidden>Stop camera</button>
-    <label class="btn">Choose a photo<input type="file" id="file" accept="image/*"></label>
-  </div>
-
-  <div id="readout">No posture detected yet</div>
-  <div id="status">Loading model…</div>
+  <section id="run" hidden>
+    <div id="doneMsg" hidden></div>
+    <div id="track" hidden>
+      <div id="title"></div>
+      <div class="progress"><div id="bar"></div></div>
+    </div>
+    <div id="cartoonBox">
+      <img id="cartoon" alt="" hidden>
+      <div id="cartoonCap">L'image de la posture apparaît ici</div>
+    </div>
+    <div class="stage">
+      <video id="video" playsinline muted></video>
+      <img id="photo" alt="" hidden>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div class="btns">
+      <button id="camBtn">Démarrer la caméra</button>
+      <button id="stopBtn" hidden>Arrêter la caméra</button>
+      <label class="btn" id="photoLbl">Choisir une photo<input type="file" id="file" accept="image/*"></label>
+    </div>
+    <div id="readout">Aucune posture détectée pour l'instant</div>
+    <div id="live"></div>
+  </section>
+  <div id="status">Chargement du modèle…</div>
 </main>
+
+<div id="alertOverlay" role="alert" aria-live="assertive"><div id="alertText"></div></div>
 
 <script>
 // Defaults. config.json (written by launch.py) overrides these.
 let CLASSES = ["qiyam", "ruku", "sitting", "sujud"];
 let MODEL_URL = "salat_best.onnx";
-const SIZE = 640;
+let SIZE = 640;
 const CONF = 0.4;
 const IOU = 0.5;
+const WINDOW_MS = 7000;   // collect detections for 7 seconds, then pick the most repeated
 const COLORS = ["#2ecc71", "#f1c40f", "#3498db", "#e74c3c", "#9b59b6"];
 
 const video = document.getElementById("video");
@@ -62,6 +117,7 @@ const photo = document.getElementById("photo");
 const overlay = document.getElementById("overlay");
 const ctx = overlay.getContext("2d");
 const readout = document.getElementById("readout");
+const liveEl = document.getElementById("live");
 const statusEl = document.getElementById("status");
 const camBtn = document.getElementById("camBtn");
 const stopBtn = document.getElementById("stopBtn");
@@ -70,7 +126,11 @@ const work = document.createElement("canvas");
 work.width = work.height = SIZE;
 const wctx = work.getContext("2d", { willReadFrequently: true });
 
+let fps = 0;
 let session = null, running = false, stream = null;
+
+// Voting state for the current 7-second window
+let votes = {}, frames = 0, windowStart = 0;
 
 async function loadModel() {
   try {
@@ -79,16 +139,65 @@ async function loadModel() {
       const cfg = await r.json();
       if (cfg.classes) CLASSES = cfg.classes;
       if (cfg.model) MODEL_URL = cfg.model;
+      if (cfg.size) SIZE = cfg.size;
     }
   } catch (e) { /* no config.json, use defaults */ }
+  work.width = work.height = SIZE;
+  const threads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
   try {
-    ort.env.wasm.numThreads = 1;
-    session = await ort.InferenceSession.create(MODEL_URL, { executionProviders: ["wasm"] });
-    statusEl.textContent = "Model ready (" + CLASSES.join(", ") + ").";
+    ort.env.wasm.numThreads = threads;
+    try {
+      session = await ort.InferenceSession.create(MODEL_URL, { executionProviders: ["wasm"] });
+    } catch (e1) {
+      if (threads === 1) throw e1;
+      ort.env.wasm.numThreads = 1;   // multi-thread failed, retry with one thread
+      session = await ort.InferenceSession.create(MODEL_URL, { executionProviders: ["wasm"] });
+    }
+    statusEl.textContent = "Modèle prêt.";
   } catch (e) {
-    statusEl.textContent = "Could not load " + MODEL_URL + ". Start the page with launch.py and keep the model file in the same folder.";
+    statusEl.textContent = "Impossible de charger " + MODEL_URL + ". Lancez la page avec launch.py et gardez le fichier du modèle dans le même dossier.";
     console.error(e);
   }
+}
+
+// ---- Posture cartoons ----
+// To use your own pictures, put cartoons/qiyam.png, ruku.png, sitting.png, sujud.png
+// next to index.html. If a file is missing, the built-in drawing is used.
+const FIGS = {
+  qiyam:   '<circle cx="120" cy="38" r="15"/><path d="M120 53V120M120 120V185M120 72L134 96L112 96"/>',
+  ruku:    '<circle cx="190" cy="112" r="15"/><path d="M90 115H172M90 115V185M165 115L96 152"/>',
+  sitting: '<circle cx="90" cy="60" r="15"/><path d="M90 75V150H152M152 150L98 178M90 92L130 135"/>',
+  sujud:   '<circle cx="186" cy="168" r="15"/><path d="M76 118L96 172L44 182M76 118L158 148M158 148L172 182"/>'
+};
+function builtinCartoon(name) {
+  const f = FIGS[name];
+  if (!f) return null;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200">' +
+    '<line x1="10" y1="188" x2="230" y2="188" stroke="#8a9a92" stroke-width="3"/>' +
+    '<g fill="none" stroke="#1f9f80" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">' + f + '</g></svg>';
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+const cartoonEl = document.getElementById("cartoon");
+const cartoonCap = document.getElementById("cartoonCap");
+function showCartoonName(name, caption) {
+  if (!name) {
+    cartoonEl.hidden = true;
+    cartoonCap.textContent = caption || "L'image de la posture apparaît ici";
+    return;
+  }
+  const fallback = builtinCartoon(name);
+  cartoonEl.hidden = false;
+  cartoonEl.alt = name;
+  cartoonCap.textContent = caption || fr(name);
+  cartoonEl.onerror = () => {
+    cartoonEl.onerror = null;
+    if (fallback) cartoonEl.src = fallback; else cartoonEl.hidden = true;
+  };
+  cartoonEl.src = "cartoons/" + name + ".png";
+}
+function showCartoon(cls) {
+  if (cls === null || cls === undefined) return showCartoonName(null);
+  showCartoonName(labelOf(cls).toLowerCase());
 }
 
 function labelOf(c) { return CLASSES[c] || ("class " + c); }
@@ -170,9 +279,6 @@ function draw(boxes, sw, sh) {
     ctx.fillStyle = "#000";
     ctx.fillText(text, b.x1 + 5, ty - 6);
   }
-  readout.textContent = boxes.length
-    ? boxes.map(b => labelOf(b.cls) + " " + Math.round(b.score * 100) + "%").join("   ")
-    : "No posture detected";
 }
 
 async function detect(src, sw, sh) {
@@ -180,29 +286,248 @@ async function detect(src, sw, sh) {
   const out = await session.run({ [session.inputNames[0]]: tensor });
   const boxes = postprocess(out[session.outputNames[0]], r, dx, dy, sw, sh);
   draw(boxes, sw, sh);
+  return boxes;
+}
+
+// ---- Prayer tracking (missed-posture alerts) ----
+const $ = id => document.getElementById(id);
+const CONFIRM_MS = 1200;     // a posture must dominate this window to count as "seen"
+const MIN_FRAMES = 2;
+const ALERT_COOLDOWN = 3000;
+const ALERT_SHOW_MS = 2500;
+const PRAYERS = {
+  fajr:    { name: "Fajr",    rakats: 2, time: "05:42" },
+  dhuhr:   { name: "Dhuhr",   rakats: 4, time: "13:15" },
+  asr:     { name: "Asr",     rakats: 4, time: "16:45" },
+  maghrib: { name: "Maghrib", rakats: 3, time: "19:50" },
+  isha:    { name: "Isha",    rakats: 4, time: "21:15" }  // edit the times here
+};
+// Each rakat: qiyam, ruku, qiyam, sujud, sitting, sujud. Extra sitting after rakat 2 and after the last one.
+function buildSteps(n) {
+  const out = [];
+  for (let r = 1; r <= n; r++) {
+    ["qiyam", "ruku", "qiyam", "sujud", "sitting", "sujud"].forEach(p => out.push({ p, r }));
+    if (r === 2 || r === n) out.push({ p: "sitting", r });
+  }
+  return out;
+}
+let selectedPrayer = "", prayer = null, steps = [], pos = -1, started = false;
+let lastConf = null, lastAlert = 0, win = [], alertTimer = null, audio = null;
+
+const FR = { qiyam: "Qiyam (debout)", ruku: "Rukû (inclinaison)", sujud: "Sujûd (prosternation)", sitting: "Assis (tashahhud)" };
+const fr = p => FR[p] || p;
+const ICONS = { fajr: "🌅", dhuhr: "☀️", asr: "🌤️", maghrib: "🌇", isha: "🌙" };
+
+function minsUntil(t) {
+  const [h, m] = t.split(":").map(Number), now = new Date();
+  let d = h * 60 + m - (now.getHours() * 60 + now.getMinutes());
+  if (d <= 0) d += 1440;
+  return d;
+}
+function nextPrayer() {
+  let key = null, mins = 1e9;
+  for (const k in PRAYERS) { const m = minsUntil(PRAYERS[k].time); if (m < mins) { mins = m; key = k; } }
+  return { key, mins };
+}
+const fmtMins = m => m < 60 ? m + " min" : Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0");
+
+function selectPrayer(k) {
+  selectedPrayer = k;
+  document.querySelectorAll(".pbtn").forEach(x => x.setAttribute("aria-pressed", x.dataset.p === k ? "true" : "false"));
+}
+function renderPick() {
+  const nx = nextPrayer(), np = PRAYERS[nx.key];
+  $("nextBanner").innerHTML = '<span class="dot"></span>Prochaine prière : <b>' + np.name + " (" + np.time + ')</b><span class="pill">Dans ' + fmtMins(nx.mins) + "</span>";
+  $("cards").innerHTML = Object.keys(PRAYERS).map(k => {
+    const p = PRAYERS[k], isNext = k === nx.key;
+    return '<button class="pbtn" data-p="' + k + '" role="radio" aria-pressed="false">' +
+      '<span class="ico">' + ICONS[k] + '</span><span class="info"><span class="nm">' + p.name +
+      (isNext ? ' <span class="badge">PROCHAINE</span>' : "") + '</span><span class="meta">' + p.rakats +
+      " rak'at <i>•</i> <span" + (isNext ? ' class="tnext"' : "") + ">" + p.time + '</span></span></span><span class="radio"></span></button>';
+  }).join("");
+  selectPrayer(selectedPrayer || nx.key);
+}
+$("cards").onclick = e => { const b = e.target.closest(".pbtn"); if (b) selectPrayer(b.dataset.p); };
+
+function showRun(free) {
+  $("pick").hidden = true; $("run").hidden = false; $("backBtn").hidden = false;
+  $("photoLbl").hidden = !free;
+  $("doneMsg").hidden = true;
+  if (free) { selectedPrayer = ""; $("h1").textContent = "Détection libre"; $("sub").textContent = "Voir la posture détectée"; }
+  else { $("h1").textContent = "Prière de " + PRAYERS[selectedPrayer].name; $("sub").textContent = PRAYERS[selectedPrayer].rakats + " rak'at"; }
+}
+function showPick() {
+  if (running) stopBtn.onclick();
+  $("run").hidden = true; $("pick").hidden = false; $("backBtn").hidden = true;
+  $("h1").textContent = "Choisir La Prière"; $("sub").textContent = "Quelle prière souhaitez-vous effectuer ?";
+  renderPick();
+}
+$("goBtn").onclick = () => {
+  if (!session) { statusEl.textContent = "Le modèle n'est pas encore chargé."; return; }
+  showRun(false);
+  camBtn.onclick();   // starts the camera right away (this tap allows sound)
+};
+$("freeBtn").onclick = () => showRun(true);
+$("backBtn").onclick = showPick;
+
+function tepTep() {
+  if (!audio) return;
+  [0, 0.28].forEach(d => {
+    const t = audio.currentTime + d;
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = "square"; o.frequency.value = 900;
+    g.gain.setValueAtTime(0.25, t); g.gain.setValueAtTime(0, t + 0.16);
+    o.connect(g); g.connect(audio.destination);
+    o.start(t); o.stop(t + 0.17);
+  });
+}
+function raiseAlert(msg) {
+  const now = performance.now();
+  if (now - lastAlert < ALERT_COOLDOWN) return;
+  lastAlert = now;
+  $("alertText").textContent = msg;
+  $("alertOverlay").classList.add("on");
+  tepTep();
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  clearTimeout(alertTimer);
+  alertTimer = setTimeout(() => $("alertOverlay").classList.remove("on"), ALERT_SHOW_MS);
+}
+
+function refresh() {
+  if (!started) {
+    $("title").textContent = prayer.name + " — mettez-vous debout pour commencer";
+    $("bar").style.width = "0%";
+    showCartoonName("qiyam", "Prochaine posture : " + fr("qiyam"));
+    return;
+  }
+  const next = steps[pos + 1];
+  $("title").textContent = prayer.name + " — Rak'at " + next.r + " sur " + prayer.rakats;
+  $("bar").style.width = Math.round(((pos + 1) / steps.length) * 100) + "%";
+  showCartoonName(next.p, "Prochaine posture : " + fr(next.p));
+}
+
+function onPosture(p) {
+  if (!started) {
+    if (p === steps[0].p) { started = true; pos = 0; refresh(); }
+    return;
+  }
+  if (p === steps[pos].p) return;
+  const next = steps[pos + 1];
+  if (p === next.p) { pos++; }
+  else {
+    let skipped = -1;
+    for (let k = 2; k <= 3 && pos + k < steps.length; k++) {
+      if (steps[pos + k].p === p) { skipped = k; break; }
+    }
+    if (skipped > 0) {
+      const missed = steps.slice(pos + 1, pos + skipped).map(x => x.p);
+      pos += skipped;
+      raiseAlert("Vous avez oublié :\n" + missed.map(fr).join(", "));
+    } else {
+      raiseAlert("Mauvaise posture.\nFaites : " + fr(next.p));
+      return;
+    }
+  }
+  if (pos >= steps.length - 1) { finishPrayer(); return; }
+  refresh();
+}
+
+function finishPrayer() {
+  const name = prayer.name;
+  stopBtn.onclick();
+  $("doneMsg").hidden = false;
+  $("doneMsg").textContent = "✓ " + name + " terminée. Qu'Allah l'accepte.";
+}
+
+function vote(boxes, now) {
+  win.push({ t: now, p: boxes.length ? labelOf(boxes[0].cls).toLowerCase() : null });
+  while (win.length && now - win[0].t > CONFIRM_MS) win.shift();
+  const counts = {};
+  win.forEach(w => { if (w.p) counts[w.p] = (counts[w.p] || 0) + 1; });
+  let best = null, bc = 0;
+  for (const k in counts) if (counts[k] > bc) { best = k; bc = counts[k]; }
+  return best && bc >= MIN_FRAMES && bc >= 0.6 * win.length ? best : null;
+}
+
+// ---- 7-second voting ----
+function resetWindow() {
+  votes = {}; frames = 0; windowStart = performance.now();
+}
+
+function addVote(boxes) {
+  frames++;
+  if (!boxes.length) return;
+  const top = boxes[0]; // highest-confidence box of this frame (nms sorts by score)
+  const v = votes[top.cls] || (votes[top.cls] = { count: 0, sum: 0 });
+  v.count++; v.sum += top.score;
+}
+
+function finishWindow() {
+  let bestCls = -1, best = null;
+  for (const c in votes) {
+    const v = votes[c];
+    // most repeated wins; ties are broken by total confidence
+    if (!best || v.count > best.count || (v.count === best.count && v.sum > best.sum)) {
+      best = v; bestCls = +c;
+    }
+  }
+  if (best) {
+    readout.innerHTML = "Résultat : <strong>" + fr(labelOf(bestCls).toLowerCase()) + "</strong>" +
+      "<small>" + best.count + " sur " + frames + " images pendant les 7 dernières secondes</small>";
+    if (!prayer) showCartoon(bestCls);
+  } else {
+    if (!prayer) showCartoon(null);
+    readout.innerHTML = "Aucune posture détectée<small>rien trouvé pendant les 7 dernières secondes</small>";
+  }
+  resetWindow();
 }
 
 async function loop() {
   if (!running) return;
   const t0 = performance.now();
-  await detect(video, video.videoWidth, video.videoHeight);
-  statusEl.textContent = "Live: " + Math.round(1000 / (performance.now() - t0)) + " frames/sec";
+  const boxes = await detect(video, video.videoWidth, video.videoHeight);
+  const dt = performance.now() - t0;
+  fps = fps ? 0.8 * fps + 0.2 * (1000 / dt) : 1000 / dt;
+  addVote(boxes);
+
+  const elapsed = performance.now() - windowStart;
+  liveEl.textContent = "Maintenant : " + (boxes.length ? labelOf(boxes[0].cls) : "rien") +
+    "  |  résultat dans " + Math.max(0, Math.ceil((WINDOW_MS - elapsed) / 1000)) + "s  |  " + fps.toFixed(1) + " fps";
+  if (elapsed >= WINDOW_MS) finishWindow();
+  if (prayer) {
+    const c = vote(boxes, performance.now());
+    if (c && c !== lastConf) { lastConf = c; onPosture(c); }
+  }
+
   requestAnimationFrame(loop);
 }
 
 camBtn.onclick = async () => {
-  if (!session) { statusEl.textContent = "Model is not loaded yet."; return; }
+  if (!session) { statusEl.textContent = "Le modèle n'est pas encore chargé."; return; }
+  try {
+    audio = new (window.AudioContext || window.webkitAudioContext)();
+    await audio.resume();
+  } catch (e) { audio = null; }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
   } catch (e) {
-    statusEl.textContent = "Camera blocked. Allow camera access and open the page at localhost or https.";
+    statusEl.textContent = "Caméra bloquée. Autorisez l'accès à la caméra et ouvrez la page sur localhost ou https.";
     return;
   }
   photo.hidden = true; video.hidden = false;
   video.srcObject = stream;
   await video.play();
+  prayer = selectedPrayer ? PRAYERS[selectedPrayer] : null;
+  steps = prayer ? buildSteps(prayer.rakats) : [];
+  pos = -1; started = false; lastConf = null; lastAlert = 0; win = [];
+  $("doneMsg").hidden = true;
+  $("track").hidden = !prayer;
+  if (prayer) refresh();
   running = true;
   camBtn.hidden = true; stopBtn.hidden = false;
+  readout.textContent = "Collecte pendant 7 secondes…";
+  statusEl.textContent = "En direct";
+  resetWindow();
   loop();
 };
 
@@ -211,7 +536,11 @@ stopBtn.onclick = () => {
   if (stream) stream.getTracks().forEach(t => t.stop());
   video.srcObject = null;
   camBtn.hidden = false; stopBtn.hidden = true;
-  statusEl.textContent = "Camera stopped.";
+  liveEl.textContent = "";
+  statusEl.textContent = "Caméra arrêtée.";
+  prayer = null;
+  $("track").hidden = true;
+  $("alertOverlay").classList.remove("on");
 };
 
 document.getElementById("file").onchange = async (e) => {
@@ -221,10 +550,15 @@ document.getElementById("file").onchange = async (e) => {
   video.hidden = true; photo.hidden = false;
   photo.src = URL.createObjectURL(f);
   await photo.decode();
-  await detect(photo, photo.naturalWidth, photo.naturalHeight);
-  statusEl.textContent = "Photo analysed.";
+  const boxes = await detect(photo, photo.naturalWidth, photo.naturalHeight);
+  readout.textContent = boxes.length
+    ? boxes.map(b => labelOf(b.cls) + " " + Math.round(b.score * 100) + "%").join("   ")
+    : "Aucune posture détectée";
+  showCartoon(boxes.length ? boxes[0].cls : null);
+  statusEl.textContent = "Photo analysée.";
 };
 
+renderPick();
 loadModel();
 </script>
 </body>

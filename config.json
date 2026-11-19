@@ -1,1 +1,1 @@
-{"model": "salat_best.onnx", "classes": ["qiyam", "ruku", "sitting", "sujud"]}
+{"model": "salat_best.onnx", "classes": ["qiyam", "ruku", "sitting", "sujud"], "size": 640}
